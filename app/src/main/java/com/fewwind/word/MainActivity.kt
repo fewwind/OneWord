@@ -11,11 +11,11 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import jackmego.com.jieba_android.JiebaSegmenter
+import jackmego.com.jieba_android.RequestCallback
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.content_main.*
 import java.io.File
 import java.util.*
-import kotlin.concurrent.thread
 
 
 class MainActivity : AppCompatActivity() {
@@ -35,32 +35,38 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "不能为空", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            thread {
-                mData.clear()
-                var list = JiebaSegmenter.getJiebaSegmenterSingleton().getDividedString(s)
-                var map = hashMapOf<String, Int>()
-                list.forEach {
-                    if (!it.isNullOrBlank()) {
-                        if (map.containsKey(it)) {
-                            map.put(it, map.get(it)!!.plus(1))
-                        } else {
-                            map.put(it, 1)
+            JiebaSegmenter.getJiebaSegmenterSingleton()
+                .getDividedStringAsync(s, object : RequestCallback<ArrayList<String>> {
+                    override fun onSuccess(list: ArrayList<String>?) {
+                        mData.clear()
+                        var map = hashMapOf<String, Int>()
+                        list?.forEach {
+                            if (!it.isNullOrBlank()) {
+                                if (map.containsKey(it)) {
+                                    map.put(it, map.get(it)!!.plus(1))
+                                } else {
+                                    map.put(it, 1)
+                                }
+                            }
                         }
+                        for ((k, v) in map) {
+                            mData.add(WordInfo(k, v))
+                        }
+                        mData.sortWith(Comparator { p0, p1 ->
+                            if (p1.count - p0.count == 0) p0.word.compareTo(p1.word) else p1.count - p0.count
+                        })
+                        mAdapter.notifyDataSetChanged()
                     }
-                }
-                for ((k, v) in map) {
-                    mData.add(WordInfo(k, v))
-                }
-                mData.sortWith(Comparator { p0, p1 -> p1.count - p0.count })
-                runOnUiThread {
-                    mAdapter.notifyDataSetChanged()
-                }
-            }
+
+                    override fun onError(errorMsg: String?) {
+                    }
+
+                })
         }
         copy.setOnClickListener {
             cm.primaryClip?.getItemAt(0)?.apply {
                 if (!toString().isNullOrEmpty()) {
-                    var s = toString()
+                    var s = text.toString()
                     et.setText(s)
                 }
             }
@@ -84,22 +90,21 @@ class MainActivity : AppCompatActivity() {
         var layoutManager = GridLayoutManager(this, 4)
 //        var layoutManager = FlexboxLayoutManager(this, FlexDirection.COLUMN, FlexWrap.WRAP)
         rv.layoutManager = layoutManager
-        mAdapter =
-            object : CommonAdapterRV<WordInfo>(this, mData, R.layout.item_word) {
-                override fun convert(holder: ViewHolderRV, bean: WordInfo) {
-                    val name: TextView = holder?.getView(R.id.word)
-                    val item: TextView = holder?.getView(R.id.count)
-                    name.text = bean.word
-                    item.text = bean.count.toString()
-                    holder.setOnClickListener(R.id.card) {
-                        // 创建普通字符型ClipData
-                        val mClipData = ClipData.newPlainText("Label", bean.word)
-                        // 将ClipData内容放到系统剪贴板里。
-                        cm.setPrimaryClip(mClipData)
-                        Toast.makeText(this@MainActivity, "复制成功", Toast.LENGTH_LONG).show()
-                    }
+        mAdapter = object : CommonAdapterRV<WordInfo>(this, mData, R.layout.item_word) {
+            override fun convert(holder: ViewHolderRV, bean: WordInfo) {
+                val name: TextView = holder?.getView(R.id.word)
+                val item: TextView = holder?.getView(R.id.count)
+                name.text = bean.word
+                item.text = bean.count.toString()
+                holder.setOnClickListener(R.id.card) {
+                    // 创建普通字符型ClipData
+                    val mClipData = ClipData.newPlainText("Label", bean.word)
+                    // 将ClipData内容放到系统剪贴板里。
+                    cm.setPrimaryClip(mClipData)
+                    Toast.makeText(this@MainActivity, "复制成功", Toast.LENGTH_LONG).show()
                 }
             }
+        }
         rv.adapter = mAdapter
     }
 
